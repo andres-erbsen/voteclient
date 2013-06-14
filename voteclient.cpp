@@ -25,6 +25,7 @@
 #define EL_TAG_SIZE (8+8+16)
 #define FILE_TAG_SIZE (FILETYPE_TAG_SIZE+EL_TAG_SIZE)
 #define VOUCHER_TYPE_RSASHA1 7
+#define SERVER_CERT_PATH "e-voting-server.pem"
 
 //////// Encoding/decoding functions ////////
 template <typename T> std::string str(T n) {
@@ -67,13 +68,11 @@ size_t private_curl_write_to_string(char *ptr, size_t size, size_t nmemb, void *
   return nmemb*size;
 }
 
-char* ssl_okcerts = NULL;
-
 CURLcode httpPOST(const std::string url, const std::string postdata, std::string* ret) {
   CURL *curl = curl_easy_init();
   if (curl == NULL) return CURLE_OUT_OF_MEMORY;
   curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-  if (ssl_okcerts) curl_easy_setopt(curl, CURLOPT_CAINFO, ssl_okcerts);
+  curl_easy_setopt(curl, CURLOPT_CAINFO, SERVER_CERT_PATH);
   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postdata.data());
   curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE , postdata.size());
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, private_curl_write_to_string);
@@ -87,7 +86,7 @@ CURLcode httpGET(const std::string url, std::string* ret) {
   CURL *curl = curl_easy_init();
   if (curl == NULL) return CURLE_OUT_OF_MEMORY;
   curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-  if (ssl_okcerts) curl_easy_setopt(curl, CURLOPT_CAINFO, ssl_okcerts);
+  curl_easy_setopt(curl, CURLOPT_CAINFO, SERVER_CERT_PATH);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, private_curl_write_to_string);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, ret);
   CURLcode retcode = curl_easy_perform(curl);
@@ -118,17 +117,23 @@ int writeFile(const std::string& filename, const std::string& data) {
 }
 
 int main(int argc, char** argv) {
-  if (!(argc == 3 || argc == 4)) {
-    die("Usage: voteclient SERVER [SERVER_CERTIFICATE] [paranoid]");
+  if ( argc > 2) die("Usage: voteclient [paranoid]");
+  bool paranoid = (argc == 2 && std::string(argv[1]) == "paranoid");
+
+  std::string VOTE_SERVER_URL(ask("Server address: "));
+  if (VOTE_SERVER_URL.size() < 4) die("Address too short");
+  if (VOTE_SERVER_URL.substr(0,4) != "http") {
+    VOTE_SERVER_URL = std::string("https://") + VOTE_SERVER_URL;
   }
-  bool paranoid = (argc > 2 && std::string(argv[argc-1]) == "paranoid");
-  // allow the certificate in curl (global variable)
-  ssl_okcerts = argv[2];
+  if (*VOTE_SERVER_URL.rbegin() != '/') VOTE_SERVER_URL.append("/");
+  curl_global_init(CURL_GLOBAL_ALL);
+
+  // TODO: get server certificate from itself, verify using SSL PKI
   RSA *server_rsa_pk = NULL;
   { // load server RSA public key to global variable
     X509* x = NULL;
     EVP_PKEY *pkey = NULL;
-    FILE* f = fopen(argv[2], "r");
+    FILE* f = fopen(SERVER_CERT_PATH, "r");
     if (f == NULL) die("Could not read server certificate file.");
     x = PEM_read_X509(f, NULL, NULL, NULL);
     if (x == NULL) die("Invalid certificate file");
@@ -139,14 +144,6 @@ int main(int argc, char** argv) {
     EVP_PKEY_free(pkey);
     if (server_rsa_pk == NULL) die("No RSA public key in certificate file");
   }
-
-  std::string VOTE_SERVER_URL(argv[1]);
-  if (VOTE_SERVER_URL.size() < 4) die("URL too short");
-  if (VOTE_SERVER_URL.substr(0,4) != "http") {
-    VOTE_SERVER_URL = std::string("https://") + VOTE_SERVER_URL;
-  }
-  if (*VOTE_SERVER_URL.rbegin() != '/') VOTE_SERVER_URL.append("/");
-  curl_global_init(CURL_GLOBAL_ALL);
 
   PCSCManager mgr;
   mgr.setLogging(&std::cerr);
