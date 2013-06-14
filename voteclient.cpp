@@ -153,7 +153,11 @@ int main(int argc, char** argv) {
   if (mgr.getReaderCount() == 0) die("No card reader found.");
 
   std::string election_status;
-  if (httpGET(VOTE_SERVER_URL+"status", &election_status) != CURLE_OK) die("Cannot connect to server");
+  CURLcode curl_err;
+  if ((curl_err = httpGET(VOTE_SERVER_URL+"status", &election_status)) != CURLE_OK) {
+    std::cerr << "curl: " << curl_easy_strerror(curl_err) << std::endl;
+    die("Cannot connect to server");
+  }
 
   uint reader = 0;
   try {
