@@ -67,10 +67,13 @@ size_t private_curl_write_to_string(char *ptr, size_t size, size_t nmemb, void *
   return nmemb*size;
 }
 
+char* ssl_okcerts = NULL;
+
 CURLcode httpPOST(const std::string url, const std::string postdata, std::string* ret) {
   CURL *curl = curl_easy_init();
   if (curl == NULL) return CURLE_OUT_OF_MEMORY;
   curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  if (ssl_okcerts) curl_easy_setopt(curl, CURLOPT_CAINFO, ssl_okcerts);
   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postdata.data());
   curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE , postdata.size());
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, private_curl_write_to_string);
@@ -84,6 +87,7 @@ CURLcode httpGET(const std::string url, std::string* ret) {
   CURL *curl = curl_easy_init();
   if (curl == NULL) return CURLE_OUT_OF_MEMORY;
   curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  if (ssl_okcerts) curl_easy_setopt(curl, CURLOPT_CAINFO, ssl_okcerts);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, private_curl_write_to_string);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, ret);
   CURLcode retcode = curl_easy_perform(curl);
@@ -114,8 +118,12 @@ int writeFile(const std::string& filename, const std::string& data) {
 }
 
 int main(int argc, char** argv) {
-  if (!(argc == 3 || argc == 4)) die("Usage: voteclient SERVER SERVER_CERTIFICATE [paranoid]");
-  bool paranoid = (argc == 4) && (std::string(argv[3]) == "paranoid");
+  if (!(argc == 3 || argc == 4)) {
+    die("Usage: voteclient SERVER [SERVER_CERTIFICATE] [paranoid]");
+  }
+  bool paranoid = (argc > 2 && std::string(argv[argc-1]) == "paranoid");
+  // allow the certificate in curl (global variable)
+  ssl_okcerts = argv[2];
   RSA *server_rsa_pk = NULL;
   { // load server RSA public key to global variable
     X509* x = NULL;
@@ -133,6 +141,11 @@ int main(int argc, char** argv) {
   }
 
   std::string VOTE_SERVER_URL(argv[1]);
+  if (VOTE_SERVER_URL.size() < 4) die("URL too short");
+  if (VOTE_SERVER_URL.substr(0,4) != "http") {
+    VOTE_SERVER_URL = std::string("https://") + VOTE_SERVER_URL;
+  }
+  if (*VOTE_SERVER_URL.rbegin() != '/') VOTE_SERVER_URL.append("/");
   curl_global_init(CURL_GLOBAL_ALL);
 
   PCSCManager mgr;
@@ -140,7 +153,7 @@ int main(int argc, char** argv) {
   if (mgr.getReaderCount() == 0) die("No card reader found.");
 
   std::string election_status;
-  if (httpGET(VOTE_SERVER_URL+"/status", &election_status) != CURLE_OK) die("Cannot connect to server");
+  if (httpGET(VOTE_SERVER_URL+"status", &election_status) != CURLE_OK) die("Cannot connect to server");
 
   uint reader = 0;
   try {
@@ -194,7 +207,7 @@ int main(int argc, char** argv) {
         registration.append((char*)pk, LSAGS_PK_SIZE);
         registration.append(cargo.begin(), cargo.end());
       std::string rrec(std::string("REGISTER")+registration), rrec_sig;
-      if ( httpPOST(VOTE_SERVER_URL+"/register", registration, &rrec_sig) != CURLE_OK
+      if ( httpPOST(VOTE_SERVER_URL+"register", registration, &rrec_sig) != CURLE_OK
         || !RSA_SHA256_verify(rrec, rrec_sig, server_rsa_pk)) {
         die("Could not register for voting");
       }
@@ -205,10 +218,10 @@ int main(int argc, char** argv) {
 
       // download description of groups
       std::string groups, groups_sig;
-      if ( httpGET(VOTE_SERVER_URL+"/groups/groups" , &groups) != CURLE_OK
+      if ( httpGET(VOTE_SERVER_URL+"groups/groups" , &groups) != CURLE_OK
         || groups.size() < FILE_TAG_SIZE+8
         || groups.substr(0,FILETYPE_TAG_SIZE) != "GROUPSLL"
-        || httpGET(VOTE_SERVER_URL+"/groups/groups.sig", &groups_sig) != CURLE_OK
+        || httpGET(VOTE_SERVER_URL+"groups/groups.sig", &groups_sig) != CURLE_OK
         || !RSA_SHA256_verify(groups, groups_sig, server_rsa_pk)) {
         die("Failed to retrieve groups list from server");
       }
@@ -243,12 +256,12 @@ int main(int argc, char** argv) {
       // download group members' public keys and cargos
       if (group < 0) die ("We don't seem to be invited to this election");
       std::string pks, cargos, pks_sig, cargos_sig;
-      if ( httpGET(VOTE_SERVER_URL+"/groups/" + str(group) + ".pks" , &pks) != CURLE_OK
+      if ( httpGET(VOTE_SERVER_URL+"groups/" + str(group) + ".pks" , &pks) != CURLE_OK
         || pks.size() < FILE_TAG_SIZE+8
         || pks.substr(0,FILETYPE_TAG_SIZE) != "GROUPPKS"
         || pks.substr(FILETYPE_TAG_SIZE,EL_TAG_SIZE) != election_tag
         || uint64le(&pks[FILE_TAG_SIZE]) != group
-        || httpGET(VOTE_SERVER_URL+"/groups/" + str(group) + ".pks.sig", &pks_sig) != CURLE_OK
+        || httpGET(VOTE_SERVER_URL+"groups/" + str(group) + ".pks.sig", &pks_sig) != CURLE_OK
         || !RSA_SHA256_verify(pks, pks_sig, server_rsa_pk)) {
         die("Failed to retrieve group public keys from server");
       }
@@ -256,12 +269,12 @@ int main(int argc, char** argv) {
       pks = pks.substr(FILE_TAG_SIZE+8);
       if (pks.size()%LSAGS_PK_SIZE) die("Bad pks list");
 
-      if ( httpGET(VOTE_SERVER_URL+"/groups/" + str(group) + ".cargos" , &cargos) != CURLE_OK
+      if ( httpGET(VOTE_SERVER_URL+"groups/" + str(group) + ".cargos" , &cargos) != CURLE_OK
         || cargos.size() < FILE_TAG_SIZE+8+LSAGS_SK_SIZE
         || cargos.substr(0,FILETYPE_TAG_SIZE) != "GROUPCGS"
         || cargos.substr(FILETYPE_TAG_SIZE,EL_TAG_SIZE) != election_tag
         || uint64le(&cargos[FILE_TAG_SIZE]) != group
-        || httpGET(VOTE_SERVER_URL+"/groups/" + str(group) + ".cargos.sig", &cargos_sig) != CURLE_OK
+        || httpGET(VOTE_SERVER_URL+"groups/" + str(group) + ".cargos.sig", &cargos_sig) != CURLE_OK
         || !RSA_SHA256_verify(cargos, cargos_sig, server_rsa_pk)) {
         die("Failed to retrieve group cargos from server");
       }
@@ -303,7 +316,7 @@ int main(int argc, char** argv) {
       std::string vrec("VOTEVOTE" + election_tag + le_bytes(uint64_t(group)) + signed_vote);
       std::string vrec_sig;
 
-      if ( httpPOST(VOTE_SERVER_URL + "/votes/" + str(group), signed_vote, &vrec_sig) != CURLE_OK
+      if ( httpPOST(VOTE_SERVER_URL+"votes/" + str(group), signed_vote, &vrec_sig) != CURLE_OK
         || !RSA_SHA256_verify(vrec, vrec_sig, server_rsa_pk)) {
         die("Could not deliver vote");
       }
