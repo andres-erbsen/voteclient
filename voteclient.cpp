@@ -19,7 +19,14 @@
 #include <openssl/pem.h>
 #include <openssl/x509.h>
 
-#define die(x) do {fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, x); exit(1);} while (0)
+// ugly hack: pause at end so windows (GUI) users see output of last command
+#if defined _WIN32 || defined _WIN64
+# define PAUSE() getchar()
+#else
+# define PAUSE() do {} while (0)
+#endif
+
+#define die(x) do {fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, x); PAUSE(); exit(1);} while (0)
 
 #define FILETYPE_TAG_SIZE (8)
 #define EL_TAG_SIZE (8+8+16)
@@ -329,5 +336,6 @@ int main(int argc, char** argv) {
 
   RSA_free(server_rsa_pk);
   curl_global_cleanup();
+  PAUSE();
   return 0;
 }
