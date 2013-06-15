@@ -18,6 +18,8 @@ Building
 You will need mingw32 gcc and libraries, including the windows API files.
 `sh windows/deps.sh` will download the external dependencies to `$HOME/mingw32`. You'll probably need to tweak some variables in the beginning of the script. `sh windows/build.sh` downloads and builds LSAGS and this.
 
+If you'd like a binary, there might be one at <http://andres.tedx.ee/voteclient.exe> and it even might be recent.
+
 License
 -------
 

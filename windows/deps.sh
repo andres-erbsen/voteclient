@@ -1,4 +1,6 @@
 #!/bin/sh
+# Written by Andreas Ots, slightly edited by Andres Erbsen, public domain / CC0
+
 
 prefix=$HOME/mingw32
 host=i486-mingw32
