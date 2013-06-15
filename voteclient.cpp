@@ -37,7 +37,7 @@
 #define FILETYPE_TAG_SIZE 8
 #define EL_TAG_SIZE (8+8+16)
 #define FILE_TAG_SIZE (FILETYPE_TAG_SIZE+EL_TAG_SIZE)
-#define VOUCHER_TYPE_RSASHA1 7
+#define VOUCHER_TYPE_RSASHA1 3
 #define SERVER_CERT_PATH "e-voting-server.pem"
 
 //////// Encoding/decoding functions ////////
