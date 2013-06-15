@@ -1,23 +1,25 @@
+// Written by Andres Erbsen, distributed under GPLv3 with the OpenSSL exception
+
 #include <stdio.h>
 #include <stdint.h>
 #include <malloc.h>
 #include <memory.h>
 #include <string.h>
 #include <assert.h>
+#include <stdlib.h>
 
 #include <sstream>
+#include <iostream>
 
 #include <curl/curl.h>
-
-#include <stdlib.h>
-#include <iostream>
-#include <smartcardpp/smartcardpp.h>
-
-#include <lsags.h>
 
 #include <openssl/sha.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
+
+#include <smartcardpp/smartcardpp.h>
+
+#include <lsags.h>
 
 // ugly hack: pause at end so windows (GUI) users see output of last command
 #if defined _WIN32 || defined _WIN64
@@ -26,22 +28,26 @@
 # define PAUSE() do {} while (0)
 #endif
 
-#define die(x) do {fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, x); PAUSE(); exit(1);} while (0)
+#define die(x) do {\
+  fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, x);\
+  PAUSE();\
+  exit(1);\
+} while (0)
 
-#define FILETYPE_TAG_SIZE (8)
+#define FILETYPE_TAG_SIZE 8
 #define EL_TAG_SIZE (8+8+16)
 #define FILE_TAG_SIZE (FILETYPE_TAG_SIZE+EL_TAG_SIZE)
 #define VOUCHER_TYPE_RSASHA1 7
 #define SERVER_CERT_PATH "e-voting-server.pem"
 
 //////// Encoding/decoding functions ////////
-template <typename T> std::string str(T n) {
+template <typename T> std::string str(T n) { // str(3) = "3"
   std::ostringstream ss;
   ss << n;
   return ss.str();
 }
 
-template <typename T> std::string le_bytes(T n) {
+template <typename T> std::string le_bytes(T n) { // le_bytes(uint16_t(1)) = "\1\0"
   std::string ret(sizeof(T), '\0');
   for (int i=0; i<sizeof(T); ++i) {
     ret[i] = n & 0xff;
@@ -50,12 +56,12 @@ template <typename T> std::string le_bytes(T n) {
   return ret;
 }
 
-uint16_t uint16le(void* p_) {
+uint16_t uint16le(void* p_) { // uint16le("\1\0") = 1
   unsigned char* p = (unsigned char*) p_;
   return (uint16_t) (*(p+1) << 8) | (uint16_t) *p;
 }
 
-uint64_t uint64le(void *p_) {
+uint64_t uint64le(void *p_) { // uint64le("\1\0\0\0\0\0\0\0") = 1
   unsigned char* p = (unsigned char*) p_;
   uint64_t ret = 0;
   ret |= (uint64_t)*p++;
@@ -101,6 +107,7 @@ CURLcode httpGET(const std::string url, std::string* ret) {
   return retcode;
 }
 
+
 int RSA_SHA256_verify(const std::string& msg, const std::string& sig, RSA* pk) {
   unsigned char hash[SHA256_DIGEST_LENGTH];
   SHA256((unsigned char*)msg.data(), msg.size(), hash);
@@ -128,10 +135,7 @@ int main(int argc, char** argv) {
   bool paranoid = (argc == 2 && std::string(argv[1]) == "paranoid");
 
   std::string VOTE_SERVER_URL(ask("Server address: "));
-  if (VOTE_SERVER_URL.size() < 4) die("Address too short");
-  if (VOTE_SERVER_URL.substr(0,4) != "http") {
-    VOTE_SERVER_URL = std::string("https://") + VOTE_SERVER_URL;
-  }
+  if (VOTE_SERVER_URL.find("://") == std::string::npos) VOTE_SERVER_URL.insert(0,"https://");
   if (*VOTE_SERVER_URL.rbegin() != '/') VOTE_SERVER_URL.append("/");
   curl_global_init(CURL_GLOBAL_ALL);
 
@@ -141,15 +145,15 @@ int main(int argc, char** argv) {
     X509* x = NULL;
     EVP_PKEY *pkey = NULL;
     FILE* f = fopen(SERVER_CERT_PATH, "r");
-    if (f == NULL) die("Could not read server certificate file.");
+    if (f == NULL) die("Could not read server certificate from " SERVER_CERT_PATH ".");
     x = PEM_read_X509(f, NULL, NULL, NULL);
-    if (x == NULL) die("Invalid certificate file");
+    if (x == NULL) die("Invalid certificate file " SERVER_CERT_PATH ".");
     pkey = X509_get_pubkey(x);
     X509_free(x);
-    if (pkey == NULL) die("No public key in certificate file");
+    if (pkey == NULL) die("No public key in certificate file" SERVER_CERT_PATH ".");
     server_rsa_pk = EVP_PKEY_get1_RSA(pkey);
     EVP_PKEY_free(pkey);
-    if (server_rsa_pk == NULL) die("No RSA public key in certificate file");
+    if (server_rsa_pk == NULL) die("No RSA public key in certificate file" SERVER_CERT_PATH ".");
   }
 
   PCSCManager mgr;
