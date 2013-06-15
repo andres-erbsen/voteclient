@@ -223,7 +223,7 @@ int main(int argc, char** argv) {
         || !RSA_SHA256_verify(rrec, rrec_sig, server_rsa_pk)) {
         die("Could not register for voting");
       }
-      std::cout << "The election authority has received your registration and promised to allow us to vote" << std::endl;
+      std::cout << "The election authority has received your registration and promised to let you vote" << std::endl;
       if (paranoid) { writeFile("reg", rrec); writeFile("reg.sig", rrec_sig); }
     } else if (election_status == "VOTE") {
       std::cout << "Preparing to vote as " << voter_id << std::endl;
@@ -332,9 +332,9 @@ int main(int argc, char** argv) {
         || !RSA_SHA256_verify(vrec, vrec_sig, server_rsa_pk)) {
         die("Could not deliver vote");
       }
-      if (paranoid) { writeFile("vrec", vrec); writeFile("vrec.sig", vrec_sig); }
 
       std::cout << "The election authority received your vote and promised to count it." << std::endl;
+      if (paranoid) { writeFile("vrec", vrec); writeFile("vrec.sig", vrec_sig); }
     }
   } catch(std::runtime_error &e) {die(e.what());}
 
