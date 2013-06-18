@@ -85,6 +85,8 @@ CURLcode httpPOST(const std::string url, const std::string postdata, std::string
   CURL *curl = curl_easy_init();
   if (curl == NULL) return CURLE_OUT_OF_MEMORY;
   curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1);
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2);
   curl_easy_setopt(curl, CURLOPT_CAINFO, SERVER_CERT_PATH);
   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postdata.data());
   curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE , postdata.size());
@@ -99,6 +101,8 @@ CURLcode httpGET(const std::string url, std::string* ret) {
   CURL *curl = curl_easy_init();
   if (curl == NULL) return CURLE_OUT_OF_MEMORY;
   curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1);
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2);
   curl_easy_setopt(curl, CURLOPT_CAINFO, SERVER_CERT_PATH);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, private_curl_write_to_string);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, ret);
